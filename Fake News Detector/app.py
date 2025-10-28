@@ -22,16 +22,21 @@ def analyze_text(text):
     return prediction, confidence
 
 def extract_article_text(url):
-    """Extract article text from URL"""
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(response.content, "html.parser")
-        paragraphs = [p.get_text() for p in soup.find_all("p")]
-        article = " ".join(paragraphs)
-        return article if len(article) > 200 else None
+
+        # Try different possible containers
+        paragraphs = [p.get_text() for p in soup.find_all(["p", "div", "article", "section"])]
+
+        article = " ".join(paragraphs).strip()
+        # Reduce length requirement for short articles
+        return article if len(article) > 100 else None
+
     except Exception as e:
         st.error(f"Error extracting article: {e}")
         return None
+
 
 def gemini_check(content):
     """Get Gemini AI's verification of the content"""
@@ -52,15 +57,20 @@ st.write("Detect fake or real news using ML and optional Gemini AI verification"
 option = st.radio("Choose Input Type:", ["Enter Text", "Enter Article URL"])
 
 if option == "Enter Text":
-    text_input = st.text_area("Paste the news article text:", height=200)
+    user_text = st.text_area(
+        "Paste the news article (title, text, source, category, url) 👇",
+        placeholder=" Researchers at MIT claim this breakthrough could revolutionize battery technology and reduce carbon emissions worldwide, "
+        "BBC News, Science, https://www.bbc.com/news/science-environment-123456",
+        height=200
+)
     
-    if st.button("Analyze") and text_input.strip():
+    if st.button("Analyze") and user_text.strip():
         # Display truncated input
         st.markdown("### 📝 Input Text")
-        st.write(text_input[:300] + ("..." if len(text_input) > 300 else ""))
+        st.write(user_text[:300] + ("..." if len(user_text) > 300 else ""))
         
         # ML Model prediction
-        prediction, confidence = analyze_text(text_input)
+        prediction, confidence = analyze_text(user_text)
         st.markdown("### � ML Model Analysis")
         
         if prediction.lower() == 'fake':
@@ -74,12 +84,16 @@ if option == "Enter Text":
         # Optional Gemini verification
         if st.checkbox("Get Second Opinion (Gemini AI)"):
             with st.spinner("Analyzing with Gemini AI..."):
-                gemini_result = gemini_check(text_input)
+                gemini_result = gemini_check(user_text)
             st.markdown("### 🔍 Gemini AI Analysis")
             st.write(gemini_result)
 
 elif option == "Enter Article URL":
-    url_input = st.text_input("Enter article URL:")
+    url_input = st.text_input(
+    "Paste the news article URL (Just make sure the link is a direct article page) 👇",
+    placeholder="https://www.nasa.gov/news-release/nasa-discovers-water-on-mars/"
+)
+
     
     if st.button("Analyze") and url_input.strip():
         with st.spinner("Fetching article..."):
@@ -108,5 +122,4 @@ elif option == "Enter Article URL":
             st.error("Could not extract article text. Please try a different URL.")
 
 st.markdown("---")
-st.caption("Developed by Nidhin | 2025")
-
+st.caption("Developed by Nidhin | Fake News Detection using NLP & Gemini AI")
