@@ -10,7 +10,7 @@ MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "fake_news_model.p
 with open(MODEL_PATH, "rb") as f:
     model, vectorizer = pickle.load(f)
 
-api_key = "AIzaSyDdjfiHQNnpLJ1Yf7JMyrpIwuw_GBBn1Gc"
+api_key = "API_KEY"
 genai.configure(api_key=api_key)
 
 def analyze_text(text):
@@ -109,3 +109,4 @@ elif option == "Enter Article URL":
 
 st.markdown("---")
 st.caption("Developed by Nidhin | 2025")
+
