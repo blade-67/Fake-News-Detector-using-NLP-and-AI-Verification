@@ -1,37 +1,31 @@
-# ==========================================
-# app.py — Streamlit Fake News Detector
-# ==========================================
-
 import streamlit as st
 import pickle
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-
-# ------------------------------------------
-# 1️⃣ Load trained model and vectorizer
-# ------------------------------------------
 import os
 
+# Load model and configure API
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "fake_news_model.pkl")
 with open(MODEL_PATH, "rb") as f:
     model, vectorizer = pickle.load(f)
 
-# ------------------------------------------
-# 2️⃣ Configure Gemini API (Optional)
-# ------------------------------------------
-# ⚠️ Replace "YOUR_GEMINI_API_KEY" with your actual key if you want this feature
-genai.configure(api_key="AIzaSyDdjfiHQNnpLJ1Yf7JMyrpIwuw_GBBn1Gc")
+api_key = "AIzaSyDdjfiHQNnpLJ1Yf7JMyrpIwuw_GBBn1Gc"
+genai.configure(api_key=api_key)
 
-# ------------------------------------------
-# 3️⃣ Helper: Extract article text from URL
-# ------------------------------------------
+def analyze_text(text):
+    """Analyze text using ML model and return prediction with confidence"""
+    X_input = vectorizer.transform([text])
+    prediction = model.predict(X_input)[0]
+    prediction_proba = model.predict_proba(X_input)[0]
+    confidence = prediction_proba.max() * 100
+    return prediction, confidence
+
 def extract_article_text(url):
+    """Extract article text from URL"""
     try:
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.content, "html.parser")
-
-        # Extract paragraphs
         paragraphs = [p.get_text() for p in soup.find_all("p")]
         article = " ".join(paragraphs)
         return article if len(article) > 200 else None
@@ -39,73 +33,79 @@ def extract_article_text(url):
         st.error(f"Error extracting article: {e}")
         return None
 
-# ------------------------------------------
-# 4️⃣ Helper: Gemini Verification (optional)
-# ------------------------------------------
 def gemini_check(content):
+    """Get Gemini AI's verification of the content"""
     try:
-        prompt = f"Analyze this news content and return only 'REAL' or 'FAKE':\n\n{content[:1000]}"
+        prompt = f"Analyze this content and determine if it's FAKE or REAL news. Explain why in one sentence.\n\n{content[:1000]}"
         model_g = genai.GenerativeModel("gemini-pro")
         response = model_g.generate_content(prompt)
-        verdict = response.text.strip().upper()
-        return "REAL" if "REAL" in verdict else "FAKE"
+        return response.text.strip()
     except Exception as e:
-        st.error(f"Gemini API error: {str(e)}")
-        return "UNKNOWN"
+        return f"Gemini analysis unavailable: {str(e)}"
 
-# ------------------------------------------
-# 5️⃣ Streamlit UI
-# ------------------------------------------
+# Page setup
 st.set_page_config(page_title="Fake News Detector", page_icon="📰", layout="centered")
+st.title("📰 Fake News Detector")
+st.write("Detect fake or real news using ML and optional Gemini AI verification")
 
-st.title("📰 Fake News Detection using NLP")
-st.write("Check if a news article or URL is real or fake using a trained ML model + optional Gemini verification.")
-
-# Option selector
+# Input selection
 option = st.radio("Choose Input Type:", ["Enter Text", "Enter Article URL"])
 
 if option == "Enter Text":
-    user_text = st.text_area("Paste the news article text below 👇", height=200)
-
-    if st.button("Classify"):
-        if user_text.strip():
-            # Transform and predict
-            X_input = vectorizer.transform([user_text])
-            prediction = model.predict(X_input)[0]
-
-            st.subheader("🧠 Model Prediction:")
-            st.write(f"**This news seems to be:** {prediction.upper()}")
-
-            # Optional Gemini verification (edge case check)
-            if st.checkbox("Verify with Gemini AI (Optional)"):
-                verdict = gemini_check(user_text)
-                st.write(f"🤖 Gemini’s Verdict: **{verdict}**")
+    text_input = st.text_area("Paste the news article text:", height=200)
+    
+    if st.button("Analyze") and text_input.strip():
+        # Display truncated input
+        st.markdown("### 📝 Input Text")
+        st.write(text_input[:300] + ("..." if len(text_input) > 300 else ""))
+        
+        # ML Model prediction
+        prediction, confidence = analyze_text(text_input)
+        st.markdown("### � ML Model Analysis")
+        
+        if prediction.lower() == 'fake':
+            st.error(f"Verdict: **FAKE NEWS** (Confidence: {confidence:.1f}%)")
         else:
-            st.warning("Please enter some text!")
+            st.success(f"Verdict: **REAL NEWS** (Confidence: {confidence:.1f}%)")
+        
+        if confidence < 70:
+            st.warning("⚠️ Low confidence - please verify with additional sources")
+        
+        # Optional Gemini verification
+        if st.checkbox("Get Second Opinion (Gemini AI)"):
+            with st.spinner("Analyzing with Gemini AI..."):
+                gemini_result = gemini_check(text_input)
+            st.markdown("### 🔍 Gemini AI Analysis")
+            st.write(gemini_result)
 
 elif option == "Enter Article URL":
-    user_url = st.text_input("Paste the news article URL below 👇")
-
-    if st.button("Fetch & Classify"):
-        if user_url.strip():
-            article = extract_article_text(user_url)
-            if article:
-                st.info("✅ Article extracted successfully!")
-                X_input = vectorizer.transform([article])
-                prediction = model.predict(X_input)[0]
-
-                st.subheader("🧠 Model Prediction:")
-                st.write(f"**This news seems to be:** {prediction.upper()}")
-
-                if st.checkbox("Verify with Gemini AI (Optional)"):
-                    verdict = gemini_check(article)
-                    st.write(f"🤖 Gemini’s Verdict: **{verdict}**")
+    url_input = st.text_input("Enter article URL:")
+    
+    if st.button("Analyze") and url_input.strip():
+        with st.spinner("Fetching article..."):
+            article_text = extract_article_text(url_input)
+            
+        if article_text:
+            # ML Model prediction
+            prediction, confidence = analyze_text(article_text)
+            st.markdown("### � ML Model Analysis")
+            
+            if prediction.lower() == 'fake':
+                st.error(f"Verdict: **FAKE NEWS** (Confidence: {confidence:.1f}%)")
             else:
-                st.error("Could not extract article text. Try a different URL.")
+                st.success(f"Verdict: **REAL NEWS** (Confidence: {confidence:.1f}%)")
+            
+            if confidence < 70:
+                st.warning("⚠️ Low confidence - please verify with additional sources")
+            
+            # Optional Gemini verification
+            if st.checkbox("Get Second Opinion (Gemini AI)"):
+                with st.spinner("Analyzing with Gemini AI..."):
+                    gemini_result = gemini_check(article_text)
+                st.markdown("### 🔍 Gemini AI Analysis")
+                st.write(gemini_result)
         else:
-            st.warning("Please enter a valid URL!")
+            st.error("Could not extract article text. Please try a different URL.")
 
- 
-# 6️⃣ Footer
 st.markdown("---")
-st.caption("Developed by Nidhin — Fake News Detection using NLP & Gemini AI")
+st.caption("Developed by Nidhin | 2025")
